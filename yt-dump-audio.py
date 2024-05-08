@@ -19,10 +19,6 @@ basedir = os.path.dirname(__file__)
 parser = argparse.ArgumentParser(description="Dowload a channel as audio")
 parser.add_argument('link', type=str, help='Link to the channel')
 
-parser.add_argument('--no-delete',
-                    action=argparse.BooleanOptionalAction,
-                    help="Do not delete any metadata files")
-
 parser.add_argument('--debug',
                     action=argparse.BooleanOptionalAction,
                     help='Assume metadata and videos have already been downloaded')
@@ -30,6 +26,9 @@ parser.add_argument('--debug',
 
 
 args = parser.parse_args()
+
+# I think this is probably better in most cases
+args.no_delete = True
 
 # Preffered format: m4a, 128kps
 
@@ -53,27 +52,20 @@ os.makedirs(outpath, exist_ok=True)
 
 fmt_str = '%(id)s.%(ext)s'
 
+
+
+archive = os.path.join(outpath, "archive.txt")
 cmd = f"""
-yt-dlp -P '{outpath}'\
+yt-dlp -P '{outpath}' -v \
     -o '{fmt_str}'\
-    --write-info-json --skip-download\
+    --write-info-json\
+    --download-archive '{archive}'\
+    --downloader http:aria2c\
     --extract-audio --audio-format m4a --audio-quality 128kps\
     '{args.link}'
 """
 
-if not args.debug:
-    subproc(cmd)
-
-
-cmd = f"""
-yt-dlp -P '{outpath}'\
-    -o '{fmt_str}'\
-    --extract-audio --audio-format m4a --audio-quality 128kps\
-    '{args.link}'
-"""
-
-if not args.debug:
-    subproc(cmd)
+subproc(cmd)
 
 def set_metadata_tag(vid_path, metadata):
 
@@ -106,15 +98,15 @@ def process_callback(vid_info, vid_path):
         'artist': vid_info['channel'],
         'title': vid_info['title'],
         'album': vid_info['playlist'],
-        'track': vid_info['playlist_index'],
+        'track': vid_info['playlist_count'] - vid_info['playlist_index'],
         'description': uri
     }
-
-    return metadata
-
+    #return metadata
+    return vid_info
 
 
 meta = {}
+
 for item in os.scandir(path=outpath):
     if not item.is_file():
         print("Not file, skipping...")
@@ -143,21 +135,52 @@ for item in os.scandir(path=outpath):
     meta[vid_path] = process_callback(item_data, vid_path)
 
 
-for vid_path, metadata in meta.items():
 
-    if any(map(lambda item: len(item[1]) == 0, metadata.items())):
-        breakpoint()
-        pass
+import nate_lib as nl
+import pandas as pd
+import datetime
 
-    breakpoint()
+
+df = nl.pandas.dict_to_df(meta)
+epochs = df.loc[:, 'epoch']
+
+def distill(orig_group):
+    ts = orig_group['epoch'].item()
+    date = datetime.datetime.fromtimestamp(ts)
+
+    group = nl.pandas.json_denormalize(orig_group, col='index')[0]
+
+    uri = "https://www.youtube.com/watch?v="+group['id']
+    metadata = {
+        'artist': group['channel'],
+        'title': group['title'],
+        'album': group['playlist'],
+        #'track': group['playlist_count'] - group['playlist_index'],
+        'track': group['index'] + 1,
+        'description': uri
+    }
+    return pd.json_normalize([metadata])
+
+
+df = nl.pandas.dict_to_df(meta)
+df = df.sort_values(['epoch'], ignore_index=True)
+df = nl.pandas.groupy(df, distill, ['id'], ['artist', 'title', 'album', 'track', 'description'])
+meta = nl.pandas.json_denormalize(df)
+
+
+
+for metadata in meta:
+    vid_id = metadata['description'].split("=")[1]
+    vid_path = os.path.join(outpath, vid_id+".m4a")
     #ffmpeg -i input.mp3 -c copy -metadata artist="Someone" output.mp3
+
     set_metadata_tag(vid_path, metadata)
 
 
-if args.no_delete or args.debug:
-    sys.exit(0)
+sys.exit(0)
 
-# Clean up
+# Clean up by deleting everything that isn't a .m4a
+
 for item in os.scandir(path=outpath):
     if not item.is_file():
         print("Not file, skipping...")
@@ -170,8 +193,6 @@ for item in os.scandir(path=outpath):
 rm '{item.path}'
     """
     subproc(cmd)
-
-
 
 sys.exit(0)
 
