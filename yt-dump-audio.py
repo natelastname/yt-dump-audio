@@ -52,8 +52,6 @@ os.makedirs(outpath, exist_ok=True)
 
 fmt_str = '%(id)s.%(ext)s'
 
-
-
 archive = os.path.join(outpath, "archive.txt")
 cmd = f"""
 yt-dlp -P '{outpath}' -v \
@@ -178,22 +176,3 @@ for metadata in meta:
 
 
 sys.exit(0)
-
-# Clean up by deleting everything that isn't a .m4a
-
-for item in os.scandir(path=outpath):
-    if not item.is_file():
-        print("Not file, skipping...")
-        continue
-
-    if item.name.endswith("m4a"):
-        continue
-
-    cmd = f"""
-rm '{item.path}'
-    """
-    subproc(cmd)
-
-sys.exit(0)
-
-
