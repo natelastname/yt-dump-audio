@@ -1,0 +1,10 @@
+# -*- mode: org -*-
+#+TITLE: yt-dump-audio
+#+AUTHOR: nate
+#+DATE: <2024-05-08>
+#+KEYWORDS:
+
+
+* yt-dump-audio
+
+=yt-dump-audio= is a Python script that uses [[https://github.com/yt-dlp/yt-dlp][yt-dlp]] to download a full YouTube channel as audio with metadata tags. I wrote this because I wanted to listen to PodCasts published on YouTube on my mobile device using my music app.
